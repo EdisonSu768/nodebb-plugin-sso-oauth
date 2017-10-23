@@ -29,10 +29,6 @@
 
 	var authenticationController = module.parent.require('./controllers/authentication');
 
-	nconf.file({
-		file: path.join(__dirname, '.', 'config.json'),
-	});
-
 	/**
 	 * REMEMBER
 	 *   Never save your OAuth Key/Secret or OAuth2 ID/Secret pair in code! It could be published and leaked accidentally.
@@ -131,7 +127,7 @@
 				// callbackURL: '/auth/' + constants.name + '/callback',
 				callbackURL: 'http://192.168.2.240:4567',
 				icon: 'fa-check-square',
-				scope: (constants.scope).split(',')
+				scope: (constants.oauth2.scope).split(',')
 			});
 
 			callback(null, strategies);
