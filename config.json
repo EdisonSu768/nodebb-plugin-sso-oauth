@@ -4,6 +4,7 @@
     "secret": "secret-bbs",
     "type": "oauth2",
     "name": "cloudtrust",
-    "userroute": "JSON"
+    "userroute": "JSON",
+    "scope": "openid"
   }
 }

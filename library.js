@@ -29,6 +29,10 @@
 
 	var authenticationController = module.parent.require('./controllers/authentication');
 
+	nconf.file({
+		file: path.join(__dirname, '.', 'config.json'),
+	});
+
 	/**
 	 * REMEMBER
 	 *   Never save your OAuth Key/Secret or OAuth2 ID/Secret pair in code! It could be published and leaked accidentally.
@@ -51,18 +55,12 @@
 	var constants = Object.freeze({
 			type: nconf.get('oauth:type'),	// Either 'oauth' or 'oauth2'
 			name: nconf.get('oauth:name'),	// Something unique to your OAuth provider in lowercase, like "github", or "nodebb"
-			oauth: {
-				requestTokenURL: '',
-				accessTokenURL: '',
-				userAuthorizationURL: '',
-				consumerKey: nconf.get('oauth:key'),	// don't change this line
-				consumerSecret: nconf.get('oauth:secret'),	// don't change this line
-			},
 			oauth2: {
 				authorizationURL: 'http://192.168.2.240:3010/auth',
 				tokenURL: 'http://192.168.2.240:3010/token',
 				clientID: nconf.get('oauth:id'),	// don't change this line
 				clientSecret: nconf.get('oauth:secret'),	// don't change this line
+				scope: nconf.get('oauth:scope'), // add this for scope
 			},
 			userRoute: nconf.get('oauth:userroute'),	// This is the address to your app's "user profile" API endpoint (expects JSON)
 		}),
@@ -83,39 +81,17 @@
 
 	OAuth.getStrategy = function(strategies, callback) {
 		if (configOk) {
-			passportOAuth = require('passport-oauth')[constants.type === 'oauth' ? 'OAuthStrategy' : 'OAuth2Strategy'];
+			passportOAuth = require('passport-oauth')['OAuth2Strategy'];
 
-			if (constants.type === 'oauth') {
-				// OAuth options
-				opts = constants.oauth;
-				opts.callbackURL = nconf.get('url') + '/auth/' + constants.name + '/callback';
-
-				passportOAuth.Strategy.prototype.userProfile = function(token, secret, params, done) {
-					this._oauth.get(constants.userRoute, token, secret, function(err, body, res) {
-						if (err) { return done(new InternalOAuthError('failed to fetch user profile', err)); }
-
-						try {
-							var json = JSON.parse(body);
-							OAuth.parseUserReturn(json, function(err, profile) {
-								if (err) return done(err);
-								profile.provider = constants.name;
-
-								done(null, profile);
-							});
-						} catch(e) {
-							done(e);
-						}
-					});
-				};
-			} else if (constants.type === 'oauth2') {
+			if (constants.type === 'oauth2') {
 				// OAuth 2 options
 				opts = constants.oauth2;
-				opts.callbackURL = nconf.get('url') + '/auth/' + constants.name + '/callback';
+				// opts.callbackURL = nconf.get('url') + '/auth/' + constants.name + '/callback';
+				opts.callbackURL = nconf.get('url');
 
 				passportOAuth.Strategy.prototype.userProfile = function(accessToken, done) {
 					this._oauth2.get(constants.userRoute, accessToken, function(err, body, res) {
 						if (err) { return done(new InternalOAuthError('failed to fetch user profile', err)); }
-
 						try {
 							var json = JSON.parse(body);
 							OAuth.parseUserReturn(json, function(err, profile) {
@@ -152,9 +128,10 @@
 			strategies.push({
 				name: constants.name,
 				url: '/auth/' + constants.name,
-				callbackURL: '/auth/' + constants.name + '/callback',
+				// callbackURL: '/auth/' + constants.name + '/callback',
+				callbackURL: 'http://192.168.2.240:4567',
 				icon: 'fa-check-square',
-				scope: (constants.scope || '').split(',')
+				scope: (constants.scope).split(',')
 			});
 
 			callback(null, strategies);
