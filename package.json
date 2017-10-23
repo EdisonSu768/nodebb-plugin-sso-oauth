@@ -1,11 +1,11 @@
 {
-  "name": "nodebb-plugin-sso-oauth",
-  "version": "0.3.3",
+  "name": "nodebb-plugin-sso-cloudtrust",
+  "version": "0.0.1",
   "description": "NodeBB Generic OAuth SSO",
   "main": "library.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/julianlam/nodebb-plugin-sso-oauth"
+    "url": "https://github.com/EdisonSu768/nodebb-plugin-sso-oauth"
   },
   "keywords": [
     "nodebb",
@@ -18,8 +18,8 @@
     "registration"
   ],
   "author": {
-    "name": "Julian Lam",
-    "email": "julian@nodebb.org"
+    "name": "Edison Su",
+    "email": "edison.su@trantect.com"
   },
   "license": "MIT",
   "bugs": {

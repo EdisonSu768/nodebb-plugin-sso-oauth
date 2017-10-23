@@ -1,0 +1,9 @@
+{
+  "oauth": {
+    "id": "client-basic-bbs",
+    "secret": "secret-bbs",
+    "type": "oauth2",
+    "name": "cloudtrust",
+    "userroute": "JSON"
+  }
+}
