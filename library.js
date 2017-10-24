@@ -25,102 +25,97 @@
 		path = module.parent.require('path'),
 		nconf = module.parent.require('nconf'),
 		winston = module.parent.require('winston'),
-		async = module.parent.require('async');
+		async = module.parent.require('async'),
+		passportOidc = require('openid-client')['Strategy'],
+		Issuer = require('openid-client')['Issuer'],
+		issuerUrl, issuer, client, rpConfig,
+		params = {
+			scope: 'openid email',
+		};
 
 	var authenticationController = module.parent.require('./controllers/authentication');
 
-	/**
-	 * REMEMBER
-	 *   Never save your OAuth Key/Secret or OAuth2 ID/Secret pair in code! It could be published and leaked accidentally.
-	 *   Save it into your config.json file instead:
-	 *
-	 *   {
-	 *     ...
-	 *     "oauth": {
-	 *       "id": "someoauthid",
-	 *       "secret": "youroauthsecret"
-	 *     }
-	 *     ...
-	 *   }
-	 *
-	 *   ... or use environment variables instead:
-	 *
-	 *   `OAUTH__ID=someoauthid OAUTH__SECRET=youroauthsecret node app.js`
-	 */
-
+	Issuer.defaultHttpOptions = { retries: 5, timeout: 15000 };
+	issuerUrl = 'http://192.168.2.240:3010';
+	issuer = new Issuer({
+		issuer: issuerUrl,
+		authorization_endpoint: `${issuerUrl}/auth`,
+		end_session_endpoint: `${issuerUrl}/session/end`,
+		token_endpoint: `${issuerUrl}/token`,
+		userinfo_endpoint: `${issuerUrl}/me`,
+		jwks_uri: `${issuerUrl}/certs`,
+		revocation_endpoint: `${issuerUrl}/token/revocation`,
+	  });
+	rpConfig = { "client_id":"client-basic-mono", "client_secret":"secret-mono", "redirect_uris":[ "http://192.168.2.240:3001/login" ], "post_logout_redirect_uris":[ "http://192.168.2.240:3001/login" ] };
+	client = new issuer.Client(rpConfig);
+	client.CLOCK_TOLERANCE = 30; // to allow a 30 seconds skew
+	
 	var constants = Object.freeze({
-			type: nconf.get('oauth:type'),	// Either 'oauth' or 'oauth2'
-			name: nconf.get('oauth:name'),	// Something unique to your OAuth provider in lowercase, like "github", or "nodebb"
+			name: 'cloudtrust',	// Something unique to your OAuth provider in lowercase, like "github", or "nodebb"
 			oauth2: {
 				authorizationURL: 'http://192.168.2.240:3010/auth',
 				tokenURL: 'http://192.168.2.240:3010/token',
-				clientID: nconf.get('oauth:id'),	// don't change this line
-				clientSecret: nconf.get('oauth:secret'),	// don't change this line
-				scope: nconf.get('oauth:scope'), // add this for scope
+				clientID: 'client-basic-bbs',	// don't change this line
+				clientSecret: 'secret-bbs',	// don't change this line
+				scope: 'openid', // add this for scope
 			},
-			userRoute: nconf.get('oauth:userroute'),	// This is the address to your app's "user profile" API endpoint (expects JSON)
+			userRoute: 'JSON',	// This is the address to your app's "user profile" API endpoint (expects JSON)
 		}),
 		configOk = false,
-		OAuth = {}, passportOAuth, opts;
+		OAuth = {}, passportOidc, Openid = {};
 
 	console.log('constants############', constants);
 
 	if (!constants.name) {
 		winston.error('[sso-oauth] Please specify a name for your OAuth provider (library.js:32)');
-	} else if (!constants.type || (constants.type !== 'oauth' && constants.type !== 'oauth2')) {
-		winston.error('[sso-oauth] Please specify an OAuth strategy to utilise (library.js:31)');
 	} else if (!constants.userRoute) {
 		winston.error('[sso-oauth] User Route required (library.js:31)');
 	} else {
 		configOk = true;
 	}
 
+	Openid.login = function() {
+		winston.info('[login] Registering new local login strategy');
+		passport.use(new passportOidc({client, params}, Openid.continueLogin));
+	};
+
+	Openid.continueLogin = function(tokenset, userinfo, next) {
+		console.log('tokenset#############', tokenset)
+		console.log('userinfo#############', userinfo)
+	};
+
 	OAuth.getStrategy = function(strategies, callback) {
 		if (configOk) {
-			passportOAuth = require('passport-oauth')['OAuth2Strategy'];
+			passportOidc.prototype.userProfile = function(accessToken, done) {
+				this._oauth2.get(constants.userRoute, accessToken, function(err, body, res) {
+					if (err) { return done(new InternalOAuthError('failed to fetch user profile', err)); }
+					try {
+						var json = JSON.parse(body);
+						OAuth.parseUserReturn(json, function(err, profile) {
+							if (err) return done(err);
+							profile.provider = constants.name;
 
-			if (constants.type === 'oauth2') {
-				// OAuth 2 options
-				opts = constants.oauth2;
-				// opts.callbackURL = nconf.get('url') + '/auth/' + constants.name + '/callback';
-				opts.callbackURL = nconf.get('url');
-
-				passportOAuth.Strategy.prototype.userProfile = function(accessToken, done) {
-					this._oauth2.get(constants.userRoute, accessToken, function(err, body, res) {
-						if (err) { return done(new InternalOAuthError('failed to fetch user profile', err)); }
-						try {
-							var json = JSON.parse(body);
-							OAuth.parseUserReturn(json, function(err, profile) {
-								if (err) return done(err);
-								profile.provider = constants.name;
-
-								done(null, profile);
-							});
-						} catch(e) {
-							done(e);
-						}
-					});
-				};
-			}
-
-			opts.passReqToCallback = true;
-
-			passport.use(constants.name, new passportOAuth(opts, function(req, token, secret, profile, done) {
+							done(null, profile);
+						});
+					} catch(e) {
+						done(e);
+					}
+				});
+			};
+			passport.use(constants.name, new passportOidc({client, params}, function(tokenset, userinfo, done) {
+				console.log('tokenset#############2', tokenset)
+				console.log('userinfo#############2', userinfo)
 				OAuth.login({
 					oAuthid: profile.id,
 					handle: profile.displayName,
 					email: profile.emails[0].value,
 					isAdmin: profile.isAdmin
 				}, function(err, user) {
-					if (err) {
-						return done(err);
-					}
-
+					if (err) {return done(err);}
 					authenticationController.onSuccessfulLogin(req, user.uid);
 					done(null, user);
 				});
 			}));
-
 			strategies.push({
 				name: constants.name,
 				url: '/auth/' + constants.name,
@@ -129,7 +124,6 @@
 				icon: 'fa-check-square',
 				scope: (constants.oauth2.scope).split(',')
 			});
-
 			callback(null, strategies);
 		} else {
 			callback(new Error('OAuth Configuration is invalid'));
