@@ -1,6 +1,6 @@
 {
   "name": "nodebb-plugin-sso-cloudtrust",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "NodeBB Generic OAuth SSO",
   "main": "library.js",
   "repository": {

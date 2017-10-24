@@ -46,10 +46,10 @@
 		jwks_uri: `${issuerUrl}/certs`,
 		revocation_endpoint: `${issuerUrl}/token/revocation`,
 	  });
-	rpConfig = { "client_id":"client-basic-mono", "client_secret":"secret-mono", "redirect_uris":[ "http://192.168.2.240:3001/login" ], "post_logout_redirect_uris":[ "http://192.168.2.240:3001/login" ] };
+	rpConfig = { "client_id":"client-basic-bbs", "client_secret":"secret-bbs", "redirect_uris":[ "http://192.168.2.240:4567/auth/cloudtrust/callback" ], "post_logout_redirect_uris":[ "http://192.168.2.240:4567" ] };
 	client = new issuer.Client(rpConfig);
 	client.CLOCK_TOLERANCE = 30; // to allow a 30 seconds skew
-	
+
 	var constants = Object.freeze({
 			name: 'cloudtrust',	// Something unique to your OAuth provider in lowercase, like "github", or "nodebb"
 			oauth2: {
@@ -57,14 +57,12 @@
 				tokenURL: 'http://192.168.2.240:3010/token',
 				clientID: 'client-basic-bbs',	// don't change this line
 				clientSecret: 'secret-bbs',	// don't change this line
-				scope: 'openid', // add this for scope
+				scope: 'openid email', // add this for scope
 			},
 			userRoute: 'JSON',	// This is the address to your app's "user profile" API endpoint (expects JSON)
 		}),
 		configOk = false,
-		OAuth = {}, passportOidc, Openid = {};
-
-	console.log('constants############', constants);
+		OAuth = {};
 
 	if (!constants.name) {
 		winston.error('[sso-oauth] Please specify a name for your OAuth provider (library.js:32)');
@@ -74,19 +72,10 @@
 		configOk = true;
 	}
 
-	Openid.login = function() {
-		winston.info('[login] Registering new local login strategy');
-		passport.use(new passportOidc({client, params}, Openid.continueLogin));
-	};
-
-	Openid.continueLogin = function(tokenset, userinfo, next) {
-		console.log('tokenset#############', tokenset)
-		console.log('userinfo#############', userinfo)
-	};
-
 	OAuth.getStrategy = function(strategies, callback) {
 		if (configOk) {
 			passportOidc.prototype.userProfile = function(accessToken, done) {
+				console.log('accessToken###########', accessToken)
 				this._oauth2.get(constants.userRoute, accessToken, function(err, body, res) {
 					if (err) { return done(new InternalOAuthError('failed to fetch user profile', err)); }
 					try {
@@ -94,7 +83,6 @@
 						OAuth.parseUserReturn(json, function(err, profile) {
 							if (err) return done(err);
 							profile.provider = constants.name;
-
 							done(null, profile);
 						});
 					} catch(e) {
@@ -102,14 +90,12 @@
 					}
 				});
 			};
-			passport.use(constants.name, new passportOidc({client, params}, function(tokenset, userinfo, done) {
-				console.log('tokenset#############2', tokenset)
-				console.log('userinfo#############2', userinfo)
+			passport.use(constants.name, new passportOidc({client, params, passReqToCallback: true}, function(req, tokenset, userinfo, done) {
 				OAuth.login({
-					oAuthid: profile.id,
-					handle: profile.displayName,
-					email: profile.emails[0].value,
-					isAdmin: profile.isAdmin
+					oAuthid: userinfo.sub,
+					handle: userinfo.email.split('@')[0],
+					email: userinfo.email,
+					isAdmin: false
 				}, function(err, user) {
 					if (err) {return done(err);}
 					authenticationController.onSuccessfulLogin(req, user.uid);
@@ -119,8 +105,7 @@
 			strategies.push({
 				name: constants.name,
 				url: '/auth/' + constants.name,
-				// callbackURL: '/auth/' + constants.name + '/callback',
-				callbackURL: 'http://192.168.2.240:4567',
+				callbackURL: '/auth/' + constants.name + '/callback',
 				icon: 'fa-check-square',
 				scope: (constants.oauth2.scope).split(',')
 			});
